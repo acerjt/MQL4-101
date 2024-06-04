@@ -34,13 +34,13 @@ double lowestPrice = Low[lastLowestIndex];
 double highestPrice = High[lastHighestIndex];
 
 int OnInit() {
-    lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = 400;
+    lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = 20;
     createRectangle();
 
     int bars = Bars(_Symbol, PERIOD_H1, startDate, stopDate);
 
     for(int i = numOfBarsToCalculate - 1; i > -1; i--) {
-
+      calculate(i);
     }
 
     return(INIT_SUCCEEDED);
@@ -72,7 +72,7 @@ void createRectangle() {
         rectangles[currentRect].lowIndex = lastLowestIndex;
         rectangles[currentRect].lowPrice = Low[lastLowestIndex];
         rectangles[currentRect].highPrice = High[lastHighestIndex];
-        ObjectCreate(rectangles[currentRect].objectName , OBJ_RECTANGLE, 0, Time[rectangles[currentRect].firstAnchorIndexPoint], High[rectangles[currentRect].highIndex], Time[rectangles[currentRect].secondAnchorIndexPoint], Low[rectangles[currentRect].lowIndex]);
+        ObjectCreate(rectangles[currentRect].objectName , OBJ_RECTANGLE, 0, Time[rectangles[currentRect].firstAnchorIndexPoint], Low[rectangles[currentRect].lowIndex], Time[rectangles[currentRect].secondAnchorIndexPoint], High[rectangles[currentRect].highIndex]);
     }
 }
 
@@ -106,10 +106,16 @@ void calculate(int index) {
         isCurrentHighLessThanRectHigh = true;
     }
 
-    if(isCurrentLowGreaterThanRectLow && isCurrentHighLessThanRectHigh) {
+    if(isCurrentLowGreaterThanRectLow && isCurrentHighGreaterThanRectHigh) {
         ObjectSet(myCustomRectangle.objectName, OBJPROP_TIME2, Time[index]);
     }
 
+    if(isCurrentLowGreaterThanRectLow && isCurrentHighLessThanRectHigh) {
+        ObjectSet(myCustomRectangle.objectName, OBJPROP_TIME2, Time[index]);
+        ObjectSet(myCustomRectangle.objectName, OBJPROP_PRICE2, High[index]);
+        myCustomRectangle.highPrice = High[index];
+        myCustomRectangle.highIndex = index;
+    }
 
     // ObjectCreate("Rectangle", OBJ_RECTANGLE, 0, Time[lastFirstAnchorPoint], High[lastHighestIndex], Time[lastSecondAnchorPoint], Low[lastLowestIndex]);
 }
