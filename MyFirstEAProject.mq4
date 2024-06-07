@@ -39,7 +39,8 @@ MyCustomRectangle rectangles[100000];
 double lowestPrice = Low[lastLowestIndex];
 double highestPrice = High[lastHighestIndex];
 long handle = ChartID();
-
+string symbol = _Symbol;
+int period  = NULL;
 void ChartConfig() {
     
     if(handle > 0) {
@@ -54,15 +55,17 @@ void ChartConfig() {
         // //--- Set the tick volume display mode
         // ChartSetInteger(handle,CHART_SHOW_VOLUMES,CHART_VOLUME_TICK);
         ChartSetInteger(handle,CHART_SHOW_GRID,false);
+        ChartSetSymbolPeriod(handle, symbol, period);
+        //ChartRedraw(handle);
     }
 }
 
 
 int OnInit() {
     ChartConfig();
-    LoadTemplate();
-    int bars = Bars(_Symbol, PERIOD_H1) - 1;
-    bars= 200;
+    //LoadTemplate();
+    int bars = Bars(symbol, period) - 1;
+    bars = 200;
     lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = bars;
     createRectangle();
 
@@ -71,12 +74,11 @@ int OnInit() {
     for(int i = bars - 1; i > -1; i--) {
         calculate(i);
     }
-    
     return(INIT_SUCCEEDED);
 }
 
 void OnDeinit(const int reason) {
-
+    ObjectsDeleteAll(handle,0,OBJ_RECTANGLE);
 }
 
 void OnTick() {
@@ -114,37 +116,44 @@ void createRectangle() {
         rectangles[currentRect].lastLowIndex = lastLowestIndex;
         rectangles[currentRect].lastLowPrice = Low[lastLowestIndex];
         rectangles[currentRect].lastHighPrice = High[lastHighestIndex];
-        ObjectCreate(rectangles[currentRect].objectName , OBJ_RECTANGLE, 0, Time[rectangles[currentRect].firstAnchorIndexPoint], Low[rectangles[currentRect].lowestIndex], Time[rectangles[currentRect].secondAnchorIndexPoint], High[rectangles[currentRect].highestIndex]);
+        ObjectCreate(handle, rectangles[currentRect].objectName , OBJ_RECTANGLE, 0, Time[rectangles[currentRect].firstAnchorIndexPoint], Low[rectangles[currentRect].lowestIndex], Time[rectangles[currentRect].secondAnchorIndexPoint], High[rectangles[currentRect].highestIndex]);
+        ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrDeepSkyBlue);
+        //ChartRedraw(handle);
     }
 }
 
 void mergeRect() {
-    // return;
+    //return;
     if(currentRect == 0)
         return;
 
     bool isMetLow = false;
     bool isMetHigh = false;
 
-    if(rectangles[currentRect].rectType == rectangles[currentRect - 1].rectType && rectangles[currentRect].rectType == "SellBias") {
+    if(rectangles[currentRect].rectType == rectangles[currentRect - 1].rectType) {
         if(rectangles[currentRect].lowestPrice < rectangles[currentRect - 1].lowestPrice) {
             rectangles[currentRect - 1].lowestIndex = rectangles[currentRect].lowestIndex;
             rectangles[currentRect - 1].lowestPrice = rectangles[currentRect].lowestPrice;
             rectangles[currentRect - 1].secondAnchorIndexPoint = rectangles[currentRect].secondAnchorIndexPoint;
             rectangles[currentRect - 1].lastLowPrice = rectangles[currentRect].lastLowPrice;
             rectangles[currentRect - 1].lastHighPrice = rectangles[currentRect].lastHighPrice;
-            ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
+            ObjectDelete(rectangles[currentRect].objectName);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_PRICE1, Low[rectangles[currentRect - 1].lowestIndex]);
+            ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
             isMetLow = true;
         }
+
 
         if(rectangles[currentRect].lowestPrice > rectangles[currentRect - 1].lowestPrice) {
             rectangles[currentRect - 1].secondAnchorIndexPoint = rectangles[currentRect].secondAnchorIndexPoint;
             rectangles[currentRect - 1].lastLowPrice = rectangles[currentRect].lastLowPrice;
             rectangles[currentRect - 1].lastHighPrice = rectangles[currentRect].lastHighPrice;
+            ObjectDelete(rectangles[currentRect].objectName);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
             isMetLow = true;
         }
+
+
 
         if(rectangles[currentRect].highestPrice > rectangles[currentRect - 1].highestPrice) {
             rectangles[currentRect - 1].highestIndex = rectangles[currentRect].highestIndex;
@@ -152,16 +161,18 @@ void mergeRect() {
             rectangles[currentRect - 1].secondAnchorIndexPoint = rectangles[currentRect].secondAnchorIndexPoint;
             rectangles[currentRect - 1].lastLowPrice = rectangles[currentRect].lastLowPrice;
             rectangles[currentRect - 1].lastHighPrice = rectangles[currentRect].lastHighPrice;
-            ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
+            ObjectDelete(rectangles[currentRect].objectName);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_PRICE2, High[rectangles[currentRect - 1].highestIndex]);
+            ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
             isMetHigh = true;
         }
 
         
         if(isMetHigh || isMetLow) {
+            rectangles[currentRect].objectName = NULL;
             currentRect--;
         }
-    }
+    } 
 }
 
 void calculate(int index) {
@@ -224,16 +235,19 @@ void calculate(int index) {
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
             if(isCurrentHighGreaterThanRectHighest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
         }
 
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {
-            
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     
         if(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest) {
@@ -249,6 +263,7 @@ void calculate(int index) {
             if(isCurrentHighGreaterThanRectHighest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
@@ -264,6 +279,7 @@ void calculate(int index) {
             if(isCurrentLowLessThanRectLowest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     } else  if(rectangles[currentRect].rectType == "SellBias") {
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
@@ -277,16 +293,18 @@ void calculate(int index) {
             lastHighestIndex = lastLowestIndex = lastFirstAnchorPoint = lastSecondAnchorPoint = index;
             createRectangle();
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
             if(isCurrentHighGreaterThanRectHighest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
         }
 
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {
-            
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
         }
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     
         if(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest) {
@@ -302,6 +320,7 @@ void calculate(int index) {
             if(isCurrentHighGreaterThanRectHighest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
@@ -313,6 +332,7 @@ void calculate(int index) {
             if(isCurrentLowLessThanRectLowest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     } else {
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
@@ -323,17 +343,20 @@ void calculate(int index) {
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
             rectangles[currentRect].rectType = "BuyBias";
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
             if(isCurrentHighGreaterThanRectHighest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrTeal);
         }
 
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {
-            
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     
         if(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest) {
@@ -349,6 +372,7 @@ void calculate(int index) {
             if(isCurrentHighGreaterThanRectHighest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
@@ -361,6 +385,7 @@ void calculate(int index) {
             if(isCurrentLowLessThanRectLowest)
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrRed);
         }
     }
@@ -369,5 +394,6 @@ void calculate(int index) {
     rectangles[currentRect].lastHighIndex = index;
     rectangles[currentRect].lastLowPrice = Low[index];
     rectangles[currentRect].lastLowIndex = index;
+    //ChartRedraw(handle);
     // ObjectCreate("Rectangle", OBJ_RECTANGLE, 0, Time[lastFirstAnchorPoint], High[lastHighestIndex], Time[lastSecondAnchorPoint], Low[lastLowestIndex]);
 }
