@@ -39,7 +39,7 @@ MyCustomRectangle rectangles[100000];
 double lowestPrice = Low[lastLowestIndex];
 double highestPrice = High[lastHighestIndex];
 long handle = ChartID();
-string symbol = _Symbol;
+string symbol = "XAUUSD";
 int period  = NULL;
 void ChartConfig() {
     
@@ -65,7 +65,6 @@ int OnInit() {
     ChartConfig();
     //LoadTemplate();
     int bars = Bars(symbol, period) - 1;
-    bars = 200;
     lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = bars;
     createRectangle();
 
@@ -123,7 +122,6 @@ void createRectangle() {
 }
 
 void mergeRect() {
-    //return;
     if(currentRect == 0)
         return;
 
@@ -143,18 +141,6 @@ void mergeRect() {
             isMetLow = true;
         }
 
-
-        if(rectangles[currentRect].lowestPrice > rectangles[currentRect - 1].lowestPrice) {
-            rectangles[currentRect - 1].secondAnchorIndexPoint = rectangles[currentRect].secondAnchorIndexPoint;
-            rectangles[currentRect - 1].lastLowPrice = rectangles[currentRect].lastLowPrice;
-            rectangles[currentRect - 1].lastHighPrice = rectangles[currentRect].lastHighPrice;
-            ObjectDelete(rectangles[currentRect].objectName);
-            ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
-            isMetLow = true;
-        }
-
-
-
         if(rectangles[currentRect].highestPrice > rectangles[currentRect - 1].highestPrice) {
             rectangles[currentRect - 1].highestIndex = rectangles[currentRect].highestIndex;
             rectangles[currentRect - 1].highestPrice = rectangles[currentRect].highestPrice;
@@ -167,9 +153,10 @@ void mergeRect() {
             isMetHigh = true;
         }
 
-        
+ 
         if(isMetHigh || isMetLow) {
             rectangles[currentRect].objectName = NULL;
+            rectangles[currentRect].rectType = NULL;  
             currentRect--;
         }
     } 
