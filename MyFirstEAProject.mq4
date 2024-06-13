@@ -39,7 +39,7 @@ MyCustomRectangle rectangles[100000];
 double lowestPrice = Low[lastLowestIndex];
 double highestPrice = High[lastHighestIndex];
 long handle = ChartID();
-string symbol = "XAUUSD";
+string symbol = _Symbol;
 int period  = NULL;
 void ChartConfig() {
     
