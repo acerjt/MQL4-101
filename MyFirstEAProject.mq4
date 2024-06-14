@@ -41,6 +41,9 @@ double highestPrice = High[lastHighestIndex];
 long handle = ChartID();
 string symbol = _Symbol;
 int period  = NULL;
+string drawSellZoneButton="drawSellZoneButton";
+string drawBuyZoneButton="drawBuyZoneButton";
+int broadcastEventID=5000;
 void ChartConfig() {
     
     if(handle > 0) {
@@ -64,6 +67,7 @@ void ChartConfig() {
 int OnInit() {
     ChartConfig();
     //LoadTemplate();
+    CreateButtonForDrawZone();
     int bars = Bars(symbol, period) - 1;
     lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = bars;
     createRectangle();
@@ -73,17 +77,52 @@ int OnInit() {
     for(int i = bars - 1; i > -1; i--) {
         calculate(i);
     }
+
+    
     return(INIT_SUCCEEDED);
 }
+
+
 
 void OnDeinit(const int reason) {
     ObjectsDeleteAll(handle,0,OBJ_RECTANGLE);
 }
 
 void OnTick() {
-
+   
 }
 
+
+void CreateButtonForDrawZone() {
+//--- Create a button to send custom events
+   ObjectCreate(handle, drawSellZoneButton,OBJ_BUTTON,0,0,0);
+   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_XSIZE,100);
+   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_YSIZE,30);
+   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_XDISTANCE,100);
+   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_YDISTANCE,20);
+   ObjectSetString(handle, drawSellZoneButton,OBJPROP_FONT,"Arial");
+   ObjectSetString(handle, drawSellZoneButton,OBJPROP_TEXT,"SELL ZONE");
+   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_FONTSIZE,10);
+   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_SELECTABLE,0);
+   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_COLOR,clrWhite);
+   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_BGCOLOR,clrRed);
+   
+   ObjectCreate(handle, drawBuyZoneButton,OBJ_BUTTON,0,0,0);
+   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_XSIZE,100);
+   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_YSIZE,30);
+   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_XDISTANCE,100);
+   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_YDISTANCE,60);
+   ObjectSetString(handle, drawBuyZoneButton,OBJPROP_FONT,"Arial");
+   ObjectSetString(handle, drawBuyZoneButton,OBJPROP_TEXT,"BUY ZONE");
+   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_FONTSIZE,10);
+   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_SELECTABLE,0);
+   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_COLOR,clrWhite);
+   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_BGCOLOR,clrTeal);
+}
 
 void LoadTemplate() {
     if(FileIsExist("Tradingview Blue.tpl"))
@@ -384,3 +423,93 @@ void calculate(int index) {
     //ChartRedraw(handle);
     // ObjectCreate("Rectangle", OBJ_RECTANGLE, 0, Time[lastFirstAnchorPoint], High[lastHighestIndex], Time[lastSecondAnchorPoint], Low[lastLowestIndex]);
 }
+
+void OnChartEvent(const int id,
+                  const long &lparam,
+                  const double &dparam,
+                  const string &sparam)
+  {
+//--- Check the event by pressing a mouse button
+   if(id==CHARTEVENT_OBJECT_CLICK)
+     {
+      string clickedChartObject=sparam;
+      //--- If you click on the object with the name drawSellZoneButton
+      if(clickedChartObject==drawSellZoneButton)
+        {
+         //--- State of the button - pressed or not
+         bool selected=ObjectGetInteger(0,drawSellZoneButton,OBJPROP_STATE);
+         //--- log a debug message
+         Print("Button pressed = ",selected);
+         int customEventID; // Number of the custom event to send
+         string message;    // Message to be sent in the event
+         //--- If the button is pressed
+         if(selected)
+           {
+            message="Button pressed";
+            customEventID=CHARTEVENT_CUSTOM+1;
+           }
+         else // Button is not pressed
+           {
+            message="Button in not pressed";
+            customEventID=CHARTEVENT_CUSTOM+999;
+           }
+         //--- Send a custom event "our" chart
+         EventChartCustom(0,customEventID-CHARTEVENT_CUSTOM,0,0,message);
+         ///--- Send a message to all open charts
+         BroadcastEvent(ChartID(),0,"Broadcast Message");
+         //--- Debug message
+         Print("Sent an event with ID = ",customEventID);
+        }
+      ChartRedraw();// Forced redraw all chart objects
+     }
+   if(id==CHARTEVENT_MOUSE_MOVE) {
+   
+      Print("Mouse Move X",lparam);
+   
+   
+      Print("Mouse Move Y",dparam);
+   }
+   
+   if(id==CHARTEVENT_MOUSE_MOVE) {
+   
+      Print("Mouse Move X",lparam);
+   
+   
+      Print("Mouse Move Y",dparam);
+   }
+//--- Check the event belongs to the user events
+
+
+
+
+   if(id>CHARTEVENT_CUSTOM)
+     {
+    //   if(id==broadcastEventID)
+    //     {
+    //      Print("Got broadcast message from a chart with id = "+lparam);
+    //     }
+    //   else
+    //     {
+    //      //--- We read a text message in the event
+    //      string info=sparam;
+    //      Print("Handle the user event with the ID = ",id);
+    //      //--- Display a message in a label
+    //      ObjectSetString(0,labelID,OBJPROP_TEXT,sparam);
+    //      ChartRedraw();// Forced redraw all chart objects
+    //     }
+     }
+  }
+  
+  void BroadcastEvent(long lparam,double dparam,string sparam)
+  {
+   int eventID=broadcastEventID-CHARTEVENT_CUSTOM;
+   long currChart=ChartFirst();
+   int i=0;
+   while(i<CHARTS_MAX)                 // We have certainly no more than CHARTS_MAX open charts
+     {
+      EventChartCustom(currChart,eventID,lparam,dparam,sparam);
+      currChart=ChartNext(currChart); // We have received a new chart from the previous
+      if(currChart==-1) break;        // Reached the end of the charts list
+      i++;// Do not forget to increase the counter
+     }
+  }
