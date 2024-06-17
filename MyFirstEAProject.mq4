@@ -20,9 +20,42 @@ class MyCustomRectangle {
         double lastLowPrice;
         double lastHighPrice;
         string rectType;
+        double candleHeigh;
 };
 
 
+class Zone {
+    public:
+        static Zone* instance;
+        Zone() {
+            isZeroChartClick = false;
+            isFirstChartClick = false;
+            isSecondChartClick = false;
+        }
+    public:
+        string objectName;
+        datetime firstDate;
+        datetime secondDate;
+        double firstPrice;
+        double secondPrice;
+        string rectType;
+        bool isZeroChartClick;
+        bool isFirstChartClick;
+        bool isSecondChartClick;
+
+
+    public:
+        static Zone * getInstance() {
+            if (!instance) instance = new Zone();
+                return instance;
+        }   
+        static void Release() {
+            delete instance;
+            instance = NULL;
+    }
+};
+
+Zone * Zone::instance = NULL;
 datetime startDate=D'01.06.2004';     
 datetime stopDate=D'04.06.2004';  
 
@@ -39,11 +72,14 @@ MyCustomRectangle rectangles[100000];
 double lowestPrice = Low[lastLowestIndex];
 double highestPrice = High[lastHighestIndex];
 long handle = ChartID();
-string symbol = _Symbol;
+string symbol = NULL;
 int period  = NULL;
 string drawSellZoneButton="drawSellZoneButton";
+bool isClickedSellBtn = false;
 string drawBuyZoneButton="drawBuyZoneButton";
+bool isClickedBuyBtn = false;
 int broadcastEventID=5000;
+
 void ChartConfig() {
     
     if(handle > 0) {
@@ -78,6 +114,7 @@ int OnInit() {
         calculate(i);
     }
 
+    bool isNewBar = NewBar();
     
     return(INIT_SUCCEEDED);
 }
@@ -86,42 +123,103 @@ int OnInit() {
 
 void OnDeinit(const int reason) {
     ObjectsDeleteAll(handle,0,OBJ_RECTANGLE);
+    Zone::Release();
 }
 
 void OnTick() {
-   
+    bool isMetQuansimodo = false;
+    double sellZonePrice1 = ObjectGet("SELLZONE", OBJPROP_PRICE1);   
+    double sellZonePrice2 = ObjectGet("SELLZONE", OBJPROP_PRICE2);   
+    double sellZoneFloorPrice = sellZonePrice1 > sellZonePrice2 ? sellZonePrice1 : sellZonePrice2;
+
+    double buyZonePrice1 = ObjectGet("BUYZONE", OBJPROP_PRICE1);   
+    double buyZonePrice2 = ObjectGet("BUYZONE", OBJPROP_PRICE2);   
+    double buyZoneCeilPrice = buyZonePrice1 > buyZonePrice2 ? buyZonePrice1 : buyZonePrice2;
+
+    bool isNewBar = NewBar();
+    if(isNewBar) {
+        for(int i = 0; i < currentRect + 1; i++) {
+            rectangles[currentRect].firstAnchorIndexPoint +=1 ;
+            rectangles[currentRect].secondAnchorIndexPoint += 1;
+            rectangles[currentRect].highestIndex += 1;
+            rectangles[currentRect].lowestIndex += 1;
+            rectangles[currentRect].lastHighIndex += 1;
+            rectangles[currentRect].lastLowIndex += 1;
+        }
+    }
+    calculate(0);
+    string rectA = rectangles[currentRect - 2].rectType;
+    string rectB = rectangles[currentRect - 1].rectType;
+    string rectC = rectangles[currentRect].rectType;
+    
+    double lengthA = rectangles[currentRect - 2].candleHeigh;
+    double lengthB = rectangles[currentRect - 1].candleHeigh;
+    double lengthC = rectangles[currentRect].candleHeigh;
+
+    if(rectA == "BuyBias" && rectB == "SellBias" && rectC == "BuyBias") {
+        if(lengthA < lengthB && lengthC > lengthB) {
+            isMetQuansimodo = true;
+            if(isMetQuansimodo) {
+                if(isNewBar && Close[0] > sellZoneFloorPrice) {
+                    double minstoplevel=MarketInfo(Symbol(),MODE_STOPLEVEL);
+                    double price=Bid;
+                    //--- calculated SL and TP prices must be normalized
+                    double stoploss=NormalizeDouble(Ask-minstoplevel*Point,Digits);
+                    double takeprofit=NormalizeDouble(Ask+minstoplevel*Point,Digits);
+                    //--- place market order to buy 1 lot
+                    int ticket=OrderSend(Symbol(),OP_BUY,1,price,3,stoploss,takeprofit,"My order",16384,0,clrGreen);
+                }
+            }
+        }
+    } else if(rectA == "SellBias" && rectB == "BuyBias" && rectC == "SellBias") {
+        if(lengthA < lengthB && lengthC > lengthB) {
+            isMetQuansimodo = true;
+            if(isMetQuansimodo) {
+                if(isNewBar && Close[0] < buyZoneCeilPrice) {
+                    double minstoplevel=MarketInfo(Symbol(),MODE_STOPLEVEL);
+                    double price=Ask;
+                    //--- calculated SL and TP prices must be normalized
+                    double stoploss=NormalizeDouble(Bid-minstoplevel*Point,Digits);
+                    double takeprofit=NormalizeDouble(Bid+minstoplevel*Point,Digits);
+                    //--- place market order to buy 1 lot
+                    int ticket=OrderSend(Symbol(),OP_BUY,1,price,3,stoploss,takeprofit,"My order",16384,0,clrGreen);
+                }
+            }
+        }
+    }
+
 }
 
 
 void CreateButtonForDrawZone() {
 //--- Create a button to send custom events
-   ObjectCreate(handle, drawSellZoneButton,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
-   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
-   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_XSIZE,100);
-   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_YSIZE,30);
-   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_XDISTANCE,100);
-   ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_YDISTANCE,20);
-   ObjectSetString(handle, drawSellZoneButton,OBJPROP_FONT,"Arial");
-   ObjectSetString(handle, drawSellZoneButton,OBJPROP_TEXT,"SELL ZONE");
-   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_FONTSIZE,10);
-   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_SELECTABLE,0);
-   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_BGCOLOR,clrRed);
-   
-   ObjectCreate(handle, drawBuyZoneButton,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
-   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
-   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_XSIZE,100);
-   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_YSIZE,30);
-   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_XDISTANCE,100);
-   ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_YDISTANCE,60);
-   ObjectSetString(handle, drawBuyZoneButton,OBJPROP_FONT,"Arial");
-   ObjectSetString(handle, drawBuyZoneButton,OBJPROP_TEXT,"BUY ZONE");
-   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_FONTSIZE,10);
-   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_SELECTABLE,0);
-   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_BGCOLOR,clrTeal);
+    ObjectCreate(handle, drawSellZoneButton,OBJ_BUTTON,0,0,0);
+    ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+    ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+    ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_XSIZE,100);
+    ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_YSIZE,30);
+    ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_XDISTANCE,100);
+    ObjectSetInteger(handle,drawSellZoneButton,OBJPROP_YDISTANCE,20);
+    ObjectSetString(handle, drawSellZoneButton,OBJPROP_FONT,"Arial");
+    ObjectSetString(handle, drawSellZoneButton,OBJPROP_TEXT,"SELL ZONE");
+    ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_FONTSIZE,10);
+    ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_SELECTABLE,0);
+    ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_COLOR,clrWhite);
+    ObjectSetInteger(handle, drawSellZoneButton,OBJPROP_BGCOLOR,clrRed);
+    
+    ObjectCreate(handle, drawBuyZoneButton,OBJ_BUTTON,0,0,0);
+    ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+    ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+    ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_XSIZE,100);
+    ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_YSIZE,30);
+    ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_XDISTANCE,100);
+    ObjectSetInteger(handle,drawBuyZoneButton,OBJPROP_YDISTANCE,60);
+    ObjectSetString(handle, drawBuyZoneButton,OBJPROP_FONT,"Arial");
+    ObjectSetString(handle, drawBuyZoneButton,OBJPROP_TEXT,"BUY ZONE");
+    ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_FONTSIZE,10);
+    ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_SELECTABLE,0);
+    ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_COLOR,clrWhite);
+    ObjectSetInteger(handle, drawBuyZoneButton,OBJPROP_BGCOLOR,clrTeal);
 }
 
 void LoadTemplate() {
@@ -154,6 +252,7 @@ void createRectangle() {
         rectangles[currentRect].lastLowIndex = lastLowestIndex;
         rectangles[currentRect].lastLowPrice = Low[lastLowestIndex];
         rectangles[currentRect].lastHighPrice = High[lastHighestIndex];
+        rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         ObjectCreate(handle, rectangles[currentRect].objectName , OBJ_RECTANGLE, 0, Time[rectangles[currentRect].firstAnchorIndexPoint], Low[rectangles[currentRect].lowestIndex], Time[rectangles[currentRect].secondAnchorIndexPoint], High[rectangles[currentRect].highestIndex]);
         ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrDeepSkyBlue);
         //ChartRedraw(handle);
@@ -174,6 +273,7 @@ void mergeRect() {
             rectangles[currentRect - 1].secondAnchorIndexPoint = rectangles[currentRect].secondAnchorIndexPoint;
             rectangles[currentRect - 1].lastLowPrice = rectangles[currentRect].lastLowPrice;
             rectangles[currentRect - 1].lastHighPrice = rectangles[currentRect].lastHighPrice;
+            rectangles[currentRect - 1].candleHeigh = rectangles[currentRect - 1].highestPrice - rectangles[currentRect - 1].lowestPrice;
             ObjectDelete(rectangles[currentRect].objectName);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_PRICE1, Low[rectangles[currentRect - 1].lowestIndex]);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
@@ -186,13 +286,13 @@ void mergeRect() {
             rectangles[currentRect - 1].secondAnchorIndexPoint = rectangles[currentRect].secondAnchorIndexPoint;
             rectangles[currentRect - 1].lastLowPrice = rectangles[currentRect].lastLowPrice;
             rectangles[currentRect - 1].lastHighPrice = rectangles[currentRect].lastHighPrice;
+            rectangles[currentRect - 1].candleHeigh = rectangles[currentRect - 1].highestPrice - rectangles[currentRect - 1].lowestPrice;
             ObjectDelete(rectangles[currentRect].objectName);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_PRICE2, High[rectangles[currentRect - 1].highestIndex]);
             ObjectSet(rectangles[currentRect - 1].objectName, OBJPROP_TIME2, Time[rectangles[currentRect - 1].secondAnchorIndexPoint]);
             isMetHigh = true;
         }
 
- 
         if(isMetHigh || isMetLow) {
             rectangles[currentRect].objectName = NULL;
             rectangles[currentRect].rectType = NULL;  
@@ -257,6 +357,7 @@ void calculate(int index) {
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
@@ -281,6 +382,7 @@ void calculate(int index) {
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
@@ -295,6 +397,7 @@ void calculate(int index) {
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
@@ -311,6 +414,7 @@ void calculate(int index) {
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
@@ -338,6 +442,7 @@ void calculate(int index) {
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
@@ -352,6 +457,7 @@ void calculate(int index) {
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
@@ -364,6 +470,7 @@ void calculate(int index) {
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
@@ -390,6 +497,7 @@ void calculate(int index) {
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
@@ -404,6 +512,7 @@ void calculate(int index) {
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
         }
 
         if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
@@ -424,66 +533,144 @@ void calculate(int index) {
     // ObjectCreate("Rectangle", OBJ_RECTANGLE, 0, Time[lastFirstAnchorPoint], High[lastHighestIndex], Time[lastSecondAnchorPoint], Low[lastLowestIndex]);
 }
 
-void OnChartEvent(const int id,
-                  const long &lparam,
-                  const double &dparam,
-                  const string &sparam)
-  {
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam) {
 //--- Check the event by pressing a mouse button
-   if(id==CHARTEVENT_OBJECT_CLICK)
-     {
-      string clickedChartObject=sparam;
-      //--- If you click on the object with the name drawSellZoneButton
-      if(clickedChartObject==drawSellZoneButton)
-        {
-         //--- State of the button - pressed or not
-         bool selected=ObjectGetInteger(0,drawSellZoneButton,OBJPROP_STATE);
-         //--- log a debug message
-         Print("Button pressed = ",selected);
-         int customEventID; // Number of the custom event to send
-         string message;    // Message to be sent in the event
-         //--- If the button is pressed
-         if(selected)
-           {
-            message="Button pressed";
-            customEventID=CHARTEVENT_CUSTOM+1;
-           }
-         else // Button is not pressed
-           {
-            message="Button in not pressed";
-            customEventID=CHARTEVENT_CUSTOM+999;
-           }
-         //--- Send a custom event "our" chart
-         EventChartCustom(0,customEventID-CHARTEVENT_CUSTOM,0,0,message);
-         ///--- Send a message to all open charts
-         BroadcastEvent(ChartID(),0,"Broadcast Message");
-         //--- Debug message
-         Print("Sent an event with ID = ",customEventID);
+    if(id==CHARTEVENT_OBJECT_CLICK) {
+        string clickedChartObject=sparam;
+        //--- If you click on the object with the name drawSellZoneButton
+        if(clickedChartObject==drawSellZoneButton) {
+            //--- State of the button - pressed or not
+            isClickedSellBtn=ObjectGetInteger(0,drawSellZoneButton,OBJPROP_STATE);
+            //--- log a debug message
+            int customEventID; // Number of the custom event to send
+            string message;    // Message to be sent in the event
+            //ObjectCreate(handle, "SellZone" , OBJ_RECTANGLE, 0, Time[0], Low[0], Time[30], High[iHighest(symbol,period,MODE_HIGH,20,0)]);
+                //--- If the button is pressed
+                //  if(selected)
+                //    {
+                //     message="Button pressed";
+                //     customEventID=CHARTEVENT_CUSTOM+1;
+                //    }
+                //  else // Button is not pressed
+                //    {
+                //     message="Button in not pressed";
+                //     customEventID=CHARTEVENT_CUSTOM+999;
+                //    }
+                //--- Send a custom event "our" chart
+                //EventChartCustom(0,customEventID-CHARTEVENT_CUSTOM,0,0,message);
+                ///--- Send a message to all open charts
+                //BroadcastEvent(ChartID(),0,"Broadcast Message");
+                //--- Debug message
+                //Print("Sent an event with ID = ",customEventID);
+
+                
         }
-      ChartRedraw();// Forced redraw all chart objects
-     }
-   if(id==CHARTEVENT_MOUSE_MOVE) {
-   
-      Print("Mouse Move X",lparam);
-   
-   
-      Print("Mouse Move Y",dparam);
-   }
-   
-   if(id==CHARTEVENT_MOUSE_MOVE) {
-   
-      Print("Mouse Move X",lparam);
-   
-   
-      Print("Mouse Move Y",dparam);
-   }
+        if(clickedChartObject==drawBuyZoneButton) {
+            //--- State of the button - pressed or not
+            isClickedBuyBtn=ObjectGetInteger(0,drawBuyZoneButton,OBJPROP_STATE);
+            //--- log a debug message
+            int customEventID; // Number of the custom event to send
+            string message;    // Message to be sent in the event
+            //ObjectCreate(handle, "SellZone" , OBJ_RECTANGLE, 0, Time[0], Low[0], Time[30], High[iHighest(symbol,period,MODE_HIGH,20,0)]);
+                //--- If the button is pressed
+                //  if(selected)
+                //    {
+                //     message="Button pressed";
+                //     customEventID=CHARTEVENT_CUSTOM+1;
+                //    }
+                //  else // Button is not pressed
+                //    {
+                //     message="Button in not pressed";
+                //     customEventID=CHARTEVENT_CUSTOM+999;
+                //    }
+                //--- Send a custom event "our" chart
+                //EventChartCustom(0,customEventID-CHARTEVENT_CUSTOM,0,0,message);
+                ///--- Send a message to all open charts
+                //BroadcastEvent(ChartID(),0,"Broadcast Message");
+                //--- Debug message
+                //Print("Sent an event with ID = ",customEventID);
+
+                
+        }
+        ChartRedraw();// Forced redraw all chart objects
+        return;
+    }
+
 //--- Check the event belongs to the user events
 
 
+    //if(id == CHARTEVENT_OBJECT_DRAG) {
+    //    Print("Drag object",lparam);
+    //}
+
+    if(id==CHARTEVENT_CLICK) {
+        //--- Prepare variables
+        int      x     =(int)lparam;
+        int      y     =(int)dparam;
+        datetime dt    =0;
+        double   price =0;
+        int      window=0;
+        //--- Convert the X and Y coordinates in terms of date/time
+        if(isClickedSellBtn) {
+            Zone::instance = Zone::getInstance();
+            if(!Zone::instance.isZeroChartClick) {
+                Zone::instance.isZeroChartClick = true;
+            } else if(!Zone::instance.isFirstChartClick) {
+                if(ChartXYToTimePrice(0,x,y,window,dt,price)) {
+                    Zone::instance.firstDate = dt;
+                    Zone::instance.firstPrice = price;
+                }
+                Zone::instance.isFirstChartClick = true;
+            } else if(!Zone::instance.isSecondChartClick) {
+                if(ChartXYToTimePrice(0,x,y,window,dt,price)) {
+                    Zone::instance.secondDate = dt;
+                    Zone::instance.secondPrice = price;
+                }
+                Zone::instance.isSecondChartClick = true;
+            }
+
+            if(Zone::instance.isFirstChartClick && Zone::instance.isSecondChartClick) {
+                ObjectCreate(handle, "SELLZONE", OBJ_RECTANGLE, 0, Zone::instance.firstDate, Zone::instance.firstPrice, Zone::instance.secondDate, Zone::instance.secondPrice);
+                ObjectSetInteger(handle, drawSellZoneButton ,OBJPROP_STATE, false);
+                ObjectSet("SELLZONE", OBJPROP_COLOR, clrMaroon);
+                isClickedSellBtn = false;
+                Zone::Release();
+                ChartRedraw();
+            }
+        }
+        
+        if(isClickedBuyBtn) {
+            Zone::instance = Zone::getInstance();
+            if(!Zone::instance.isZeroChartClick) {
+                Zone::instance.isZeroChartClick = true;
+            } else if(!Zone::instance.isFirstChartClick) {
+                if(ChartXYToTimePrice(0,x,y,window,dt,price)) {
+                    Zone::instance.firstDate = dt;
+                    Zone::instance.firstPrice = price;
+                }
+                Zone::instance.isFirstChartClick = true;
+            } else if(!Zone::instance.isSecondChartClick) {
+                if(ChartXYToTimePrice(0,x,y,window,dt,price)) {
+                    Zone::instance.secondDate = dt;
+                    Zone::instance.secondPrice = price;
+                }
+                Zone::instance.isSecondChartClick = true;
+            }
+
+            if(Zone::instance.isFirstChartClick && Zone::instance.isSecondChartClick) {
+                ObjectCreate(handle, "BUYZONE", OBJ_RECTANGLE, 0, Zone::instance.firstDate, Zone::instance.firstPrice, Zone::instance.secondDate, Zone::instance.secondPrice);
+                ObjectSetInteger(handle, drawSellZoneButton ,OBJPROP_STATE, false);
+                ObjectSet("BUYZONE", OBJPROP_COLOR, clrMediumAquamarine);
+                isClickedBuyBtn = false;
+                Zone::Release();
+                ChartRedraw();
+            }
+        }
+        Print("+--------------------------------------------------------------+");
+    }
 
 
-   if(id>CHARTEVENT_CUSTOM)
-     {
+    if(id>CHARTEVENT_CUSTOM) {
     //   if(id==broadcastEventID)
     //     {
     //      Print("Got broadcast message from a chart with id = "+lparam);
@@ -497,19 +684,29 @@ void OnChartEvent(const int id,
     //      ObjectSetString(0,labelID,OBJPROP_TEXT,sparam);
     //      ChartRedraw();// Forced redraw all chart objects
     //     }
-     }
-  }
-  
-  void BroadcastEvent(long lparam,double dparam,string sparam)
-  {
-   int eventID=broadcastEventID-CHARTEVENT_CUSTOM;
-   long currChart=ChartFirst();
-   int i=0;
-   while(i<CHARTS_MAX)                 // We have certainly no more than CHARTS_MAX open charts
-     {
-      EventChartCustom(currChart,eventID,lparam,dparam,sparam);
-      currChart=ChartNext(currChart); // We have received a new chart from the previous
-      if(currChart==-1) break;        // Reached the end of the charts list
-      i++;// Do not forget to increase the counter
-     }
-  }
+    }
+}
+
+void BroadcastEvent(long lparam,double dparam,string sparam) {
+    int eventID=broadcastEventID-CHARTEVENT_CUSTOM;
+    long currChart=ChartFirst();
+    int i=0;
+    while(i<CHARTS_MAX) {                 // We have certainly no more than CHARTS_MAX open charts 
+        EventChartCustom(currChart,eventID,lparam,dparam,sparam);
+        currChart=ChartNext(currChart); // We have received a new chart from the previous
+        if(currChart==-1) break;        // Reached the end of the charts list
+        i++;// Do not forget to increase the counter
+    }
+}
+
+
+bool NewBar() {
+    static datetime lastbar;
+    datetime curbar = Time[0];
+    if(lastbar!=curbar) {
+        lastbar=curbar;
+        return (true);
+    } else {
+        return(false);
+    }
+}
