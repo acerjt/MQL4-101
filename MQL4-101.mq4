@@ -66,13 +66,32 @@ class Session {
     public:
         datetime openSession;
         datetime closeSession;
+        double sessionLowestPrice;
+        double sessionHighestPrice;
+        string name;
+        int sessionColor;
+        int count;
+        int shift;
         Session() {
         }
-        Session(SESSION session) {
+
+
+        void createSessionZone(SESSION session) {
             datetime Today = TimeCurrent() - (TimeCurrent() % (PERIOD_D1 * 60));  // Today at midnight
-            if(session == ASIA) {
-                this.openSession = Today + 3600;
-                this.closeSession = Today + 3600;
+            switch (session) {
+                case ASIA:
+                    this.openSession = Today + 3600 * 9;
+                    this.closeSession = Today + 3600 * 16;
+                    this.count = Bars(symbol, period, openSession, closeSession);
+                    this.shift = iBarShift(symbol,period, closeSession);
+                    this.sessionHighestPrice = iHighest(symbol,period,MODE_HIGH,count,shift);
+                    this.sessionLowestPrice = iLowest(symbol,period,MODE_HIGH,count,shift);
+                    this.name = "ASIA_SESSION";
+                    this.sessionColor = 62768;
+                break;
+                ObjectDelete(this.name);
+                ObjectCreate(handle, this.name , OBJ_RECTANGLE, 0, this.openSession, this.sessionLowestPrice, this.closeSession, this.sessionHighestPrice);
+                ObjectSet(this.name, OBJPROP_COLOR, this.sessionColor);
             }
         }
 };
@@ -93,14 +112,15 @@ double lowestPrice = Low[lastLowestIndex];
 double highestPrice = High[lastHighestIndex];
 long handle = ChartID();
 string symbol = NULL;
-int period  = NULL;
+int period  = PERIOD_M15;
 string drawSellZoneButton="drawSellZoneButton";
 bool isClickedSellBtn = false;
 string drawBuyZoneButton="drawBuyZoneButton";
 bool isClickedBuyBtn = false;
 int broadcastEventID=5000;
-Session asia = Session(SESSION::ASIA);
-
+Session asia;
+bool isMetQuansimodo = false;
+bool isOrder = true;
 
 void ChartConfig() {
     
@@ -121,25 +141,33 @@ void ChartConfig() {
     }
 }
 
+bool checkNewDate() {
+    bool isNewDay = false;
+    int dow = TimeDayOfWeek(Time[0]);
+    static int day;
+    
+    if (dow != day)
+    {
+        isNewDay = true;
+    }
+    else 
+    {
+        dow = day;
+    }
+    return isNewDay;
+}
 
 int OnInit() {
     ChartConfig();
     //LoadTemplate();
     CreateButtonForDrawZone();
     int bars = Bars(symbol, period) - 1;
+    bars = 500;
     lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = bars;
     createRectangle();
 
 
-    int count = Bars(symbol, period, asia.openSession,asia.closeSession);
-    int shift = iBarShift(symbol,period,asia.closeSession);
-    double sessionHighestPrice = iHighest(symbol,period,MODE_HIGH,count,shift);
-    double sessionLowestPrice = iLowest(symbol,period,MODE_HIGH,count,shift);
-
-    ObjectCreate(handle, "ASIA_SESSION" , OBJ_RECTANGLE, 0, asia.openSession, sessionLowestPrice, asia.closeSession, sessionHighestPrice);
-    ObjectSet("ASIA_SESSION", OBJPROP_COLOR, clrIvory);
-
-    for(int i = bars - 1; i > 0; i--) {
+    for(int i = bars; i > 0; i--) {
         calculate(i);
     }
 
@@ -156,68 +184,78 @@ void OnDeinit(const int reason) {
 }
 
 void OnTick() {
-    bool isMetQuansimodo = false;
-    double sellZonePrice1 = ObjectGet("SELLZONE", OBJPROP_PRICE1);   
-    double sellZonePrice2 = ObjectGet("SELLZONE", OBJPROP_PRICE2);   
-    double sellZoneFloorPrice = sellZonePrice1 < sellZonePrice2 ? sellZonePrice1 : sellZonePrice2;
+    
 
-    double buyZonePrice1 = ObjectGet("BUYZONE", OBJPROP_PRICE1);   
-    double buyZonePrice2 = ObjectGet("BUYZONE", OBJPROP_PRICE2);   
-    double buyZoneCeilPrice = buyZonePrice1 > buyZonePrice2 ? buyZonePrice1 : buyZonePrice2;
+    // double sellZonePrice1 = ObjectGet("SELLZONE", OBJPROP_PRICE1);   
+    // double sellZonePrice2 = ObjectGet("SELLZONE", OBJPROP_PRICE2);   
+    // double sellZoneFloorPrice = sellZonePrice1 < sellZonePrice2 ? sellZonePrice1 : sellZonePrice2;
+
+    // double buyZonePrice1 = ObjectGet("BUYZONE", OBJPROP_PRICE1);   
+    // double buyZonePrice2 = ObjectGet("BUYZONE", OBJPROP_PRICE2);   
+    // double buyZoneCeilPrice = buyZonePrice1 > buyZonePrice2 ? buyZonePrice1 : buyZonePrice2;
 
     bool isNewBar = NewBar();
     if(isNewBar) {
-        for(int i = 0; i < currentRect + 1; i++) {
-            rectangles[currentRect].firstAnchorIndexPoint +=1 ;
-            rectangles[currentRect].secondAnchorIndexPoint += 1;
-            rectangles[currentRect].highestIndex += 1;
-            rectangles[currentRect].lowestIndex += 1;
-            rectangles[currentRect].lastHighIndex += 1;
-            rectangles[currentRect].lastLowIndex += 1;
-        }
+        //for(int i = 0; i < currentRect + 1; i++) {
+        //    rectangles[currentRect].firstAnchorIndexPoint +=1 ;
+        //    rectangles[currentRect].secondAnchorIndexPoint += 1;
+        //    rectangles[currentRect].highestIndex += 1;
+        //    rectangles[currentRect].lowestIndex += 1;
+        //    rectangles[currentRect].lastHighIndex += 1;
+        //    rectangles[currentRect].lastLowIndex += 1;
+        //}
         calculate(1);
     }
+    if(Hour()>=16 && Hour()<20) {
+        bool isNewDay = checkNewDate();
+        if(isNewDay) {
+            asia.createSessionZone(SESSION::ASIA);
+            isOrder = true;
+            isMetQuansimodo = false;
+        }
+        string rectA = rectangles[currentRect - 2].rectType;
+        string rectB = rectangles[currentRect - 1].rectType;
+        string rectC = rectangles[currentRect].rectType;
+        
+        double lengthA = rectangles[currentRect - 2].candleHeigh;
+        double lengthB = rectangles[currentRect - 1].candleHeigh;
+        double lengthC = rectangles[currentRect].candleHeigh;
 
-    string rectA = rectangles[currentRect - 2].rectType;
-    string rectB = rectangles[currentRect - 1].rectType;
-    string rectC = rectangles[currentRect].rectType;
-    
-    double lengthA = rectangles[currentRect - 2].candleHeigh;
-    double lengthB = rectangles[currentRect - 1].candleHeigh;
-    double lengthC = rectangles[currentRect].candleHeigh;
-
-    if(rectA == "BuyBias" && rectB == "SellBias" && rectC == "BuyBias") {
-        if(lengthA < lengthB && lengthC > lengthB) {
-            isMetQuansimodo = true;
-            if(isMetQuansimodo) {
-                if(isNewBar && Close[1] > sellZoneFloorPrice) {
-                    double minstoplevel=MarketInfo(Symbol(),MODE_STOPLEVEL);
-                    double price=Bid;
-                    //--- calculated SL and TP prices must be normalized
-                    double stoploss=NormalizeDouble(Ask-minstoplevel*Point,Digits);
-                    double takeprofit=NormalizeDouble(Ask+minstoplevel*Point,Digits);
-                    //--- place market order to buy 1 lot
-                    int ticket=OrderSend(Symbol(),OP_BUY,1,price,3,stoploss,takeprofit,"My order",16384,0,clrGreen);
+        if(rectA == "BuyBias" && rectB == "SellBias" && rectC == "BuyBias") {
+            if(lengthA < lengthB && lengthC > lengthB) {
+                isMetQuansimodo = true;
+                if(isMetQuansimodo && isOrder) {
+                    if(isNewBar && Close[1] > asia.sessionHighestPrice) {
+                        double minstoplevel=MarketInfo(Symbol(),MODE_STOPLEVEL);
+                        double price=Bid;
+                        //--- calculated SL and TP prices must be normalized
+                        double stoploss=NormalizeDouble(Ask-minstoplevel*Point,Digits);
+                        double takeprofit=NormalizeDouble(Ask+minstoplevel*Point,Digits);
+                        //--- place market order to buy 1 lot
+                        int ticket=OrderSend(Symbol(),OP_BUY,1,price,3,stoploss,takeprofit,"My order",16384,0,clrGreen);
+                        isOrder = false;
+                    }
                 }
             }
-        }
-    } else if(rectA == "SellBias" && rectB == "BuyBias" && rectC == "SellBias") {
-        if(lengthA < lengthB && lengthC > lengthB) {
-            isMetQuansimodo = true;
-            if(isMetQuansimodo) {
-                if(isNewBar && Close[1] < buyZoneCeilPrice) {
-                    double minstoplevel=MarketInfo(Symbol(),MODE_STOPLEVEL);
-                    double price=Ask;
-                    //--- calculated SL and TP prices must be normalized
-                    double stoploss=NormalizeDouble(Bid-minstoplevel*Point,Digits);
-                    double takeprofit=NormalizeDouble(Bid+minstoplevel*Point,Digits);
-                    //--- place market order to buy 1 lot
-                    int ticket=OrderSend(Symbol(),OP_BUY,1,price,3,stoploss,takeprofit,"My order",16384,0,clrGreen);
+        } else if(rectA == "SellBias" && rectB == "BuyBias" && rectC == "SellBias") {
+            if(lengthA < lengthB && lengthC > lengthB) {
+                isMetQuansimodo = true;
+                if(isMetQuansimodo && isOrder) {
+                    if(isNewBar && Close[1] < asia.sessionLowestPrice) {
+                        double minstoplevel=MarketInfo(Symbol(),MODE_STOPLEVEL);
+                        double price=Ask;
+                        //--- calculated SL and TP prices must be normalized
+                        double stoploss=NormalizeDouble(Bid-minstoplevel*Point,Digits);
+                        double takeprofit=NormalizeDouble(Bid+minstoplevel*Point,Digits);
+                        //--- place market order to buy 1 lot
+                        int ticket=OrderSend(Symbol(),OP_BUY,1,price,3,stoploss,takeprofit,"My order",16384,0,clrGreen);
+                        isOrder = false;
+                    }
                 }
             }
         }
     }
-   ChartRedraw();
+    ChartRedraw();
 }
 
 
@@ -290,6 +328,7 @@ void createRectangle() {
 }
 
 void mergeRect() {
+    return;
     if(currentRect == 0)
         return;
 
@@ -352,11 +391,11 @@ void calculate(int index) {
         isCurrentLowGreaterThanRectLowest = true;
     }
 
-    if(low < rectangles[currentRect].lowestPrice) {
+    if(low <= rectangles[currentRect].lowestPrice) {
         isCurrentLowLessThanRectLowest = true;
     }
 
-    if(high > rectangles[currentRect].highestPrice) {
+    if(high >= rectangles[currentRect].highestPrice) {
         isCurrentHighGreaterThanRectHighest = true;
     }
 
@@ -369,11 +408,11 @@ void calculate(int index) {
         isCurrentLowGreaterThanRectLastLow = true;
     }
 
-    if(low < rectangles[currentRect].lastLowPrice) {
+    if(low <= rectangles[currentRect].lastLowPrice) {
         isCurrentLowLessThanRectLastLow = true;
     }
 
-    if(high > rectangles[currentRect].lastHighPrice) {
+    if(high >= rectangles[currentRect].lastHighPrice) {
         isCurrentHighGreaterThanRectLastHigh = true;
     }
 
@@ -384,181 +423,231 @@ void calculate(int index) {
 
 
     if(rectangles[currentRect].rectType == "BuyBias") {
+        // current candle higher than current rect
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
             rectangles[currentRect].secondAnchorIndexPoint = index;
-            if(isCurrentHighGreaterThanRectHighest)
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
+        }
+
+
+        // current candle lower than current rect
+        if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
+            mergeRect();
+            currentRect++;
+            lastHighestIndex = index + 1;
+            lastSecondAnchorPoint  = index;
+            lastLowestIndex = index;
+            lastFirstAnchorPoint = index + 1;
+            createRectangle();
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+            rectangles[currentRect].rectType = "SellBias";
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrRed);
+        }
+
+        // current candle inner current rect
+        if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {    
+            // current candle greater than current rect last candle 
+            if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+                rectangles[currentRect].secondAnchorIndexPoint = index;
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
+            }
+
+            // current candle less than current rect last candle 
+            if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
+                mergeRect();
+                currentRect++;
+                lastHighestIndex = index + 1;
+                lastSecondAnchorPoint  = index;
+                lastLowestIndex = index;
+                lastFirstAnchorPoint = index + 1;
+                createRectangle();
+                rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+                rectangles[currentRect].rectType = "SellBias";
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrRed);
+            }
+
+            if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
+
+            if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
         }
 
-        if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-        }
-
-        if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-        }
-    
+        // current candle outer current rect
         if(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
             rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
-            if(isCurrentLowLessThanRectLowest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
-            if(isCurrentHighGreaterThanRectHighest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
             rectangles[currentRect].secondAnchorIndexPoint = index;
         }
-    
+
+    } else if(rectangles[currentRect].rectType == "SellBias") {
+         // current candle higher than current rect
+        if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
+            mergeRect();
+            currentRect++;
+            lastHighestIndex = index;
+            lastSecondAnchorPoint  = index;
+            lastLowestIndex = index + 1;
+            lastFirstAnchorPoint = index + 1;
+            createRectangle();
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+            rectangles[currentRect].rectType = "BuyBias";
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrTeal);
+        }
+
+
+         // current candle lower than current rect
         if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
             rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+            rectangles[currentRect].secondAnchorIndexPoint = index;
         }
 
-        if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
-            mergeRect();
-            currentRect++;
-            lastHighestIndex = lastLowestIndex = lastFirstAnchorPoint = lastSecondAnchorPoint = index;
-            createRectangle();
-            if(isCurrentLowLessThanRectLowest)
+        // current candle inner current rect
+        if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {    
+            // current candle greater than current rect last candle 
+            if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
+                mergeRect();
+                currentRect++;
+                lastHighestIndex = index;
+                lastSecondAnchorPoint  = index;
+                lastLowestIndex = index + 1;
+                lastFirstAnchorPoint = index + 1;
+                createRectangle();
+                rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+                rectangles[currentRect].rectType = "BuyBias";
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrTeal);
+            }
+
+            // current candle less than current rect last candle 
+            if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
+                rectangles[currentRect].lowestPrice = Low[index];
+                rectangles[currentRect].lowestIndex = index;
+                rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
                 ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-        }
-    } else  if(rectangles[currentRect].rectType == "SellBias") {
-        if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
-            rectangles[currentRect].highestPrice = High[index];
-            rectangles[currentRect].highestIndex = index;
-            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
+
+            if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
+
+            if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
         }
 
-        if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
-            mergeRect();
-            currentRect++;
-            lastHighestIndex = lastLowestIndex = lastFirstAnchorPoint = lastSecondAnchorPoint = index;
-            createRectangle();
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-            if(isCurrentHighGreaterThanRectHighest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
-        }
-
-        if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
-        }
-
-        if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-        }
-    
+        // current candle outer current rect
         if(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
             rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
-            if(isCurrentLowLessThanRectLowest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
-            if(isCurrentHighGreaterThanRectHighest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-        }
-    
-        if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
-            rectangles[currentRect].lowestPrice = Low[index];
-            rectangles[currentRect].lowestIndex = index;
-            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
-            if(isCurrentLowLessThanRectLowest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
             rectangles[currentRect].secondAnchorIndexPoint = index;
         }
     } else {
+        // current candle higher than current rect
         if(isCurrentLowGreaterThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
             rectangles[currentRect].rectType = "BuyBias";
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
             rectangles[currentRect].secondAnchorIndexPoint = index;
-            if(isCurrentHighGreaterThanRectHighest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrTeal);
         }
 
-        if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {
+
+        // current candle lower than current rect
+        if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
+            rectangles[currentRect].lowestPrice = Low[index];
+            rectangles[currentRect].lowestIndex = index;
+            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
+            rectangles[currentRect].rectType = "SellBias";
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
             rectangles[currentRect].secondAnchorIndexPoint = index;
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrRed);
         }
 
-        if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
-            rectangles[currentRect].secondAnchorIndexPoint = index;
+
+        // current candle inner current rect
+        if(isCurrentLowGreaterThanRectLowest && isCurrentHighLessThanRectHighest) {    
+            // current candle greater than current rect last candle 
+            if(isCurrentLowGreaterThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
+                rectangles[currentRect].rectType = "BuyBias";
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrTeal);
+            }
+
+            // current candle less than current rect last candle 
+            if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
+                rectangles[currentRect].rectType = "SellBias";
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrRed);
+            }
+
+            if(isCurrentLowGreaterThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
+
+            if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
+                ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);    
+                rectangles[currentRect].secondAnchorIndexPoint = index;
+            }
         }
-    
+
+        // current candle outer current rect
         if(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest) {
             rectangles[currentRect].highestPrice = High[index];
             rectangles[currentRect].highestIndex = index;
             rectangles[currentRect].lowestPrice = Low[index];
             rectangles[currentRect].lowestIndex = index;
             rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowLessThanRectLastLow && isCurrentHighGreaterThanRectLastHigh) {
-            if(isCurrentLowLessThanRectLowest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
-            if(isCurrentHighGreaterThanRectHighest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
+            ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE2, High[index]);
             ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
             rectangles[currentRect].secondAnchorIndexPoint = index;
-        }
-    
-        if(isCurrentLowLessThanRectLowest && isCurrentHighLessThanRectHighest) {
-            rectangles[currentRect].lowestPrice = Low[index];
-            rectangles[currentRect].lowestIndex = index;
-            rectangles[currentRect].candleHeigh = rectangles[currentRect].highestPrice - rectangles[currentRect].lowestPrice;
-        }
-
-        if(isCurrentLowLessThanRectLastLow && isCurrentHighLessThanRectLastHigh) {
-            rectangles[currentRect].rectType = "SellBias";
-            if(isCurrentLowLessThanRectLowest)
-                ObjectSet(rectangles[currentRect].objectName, OBJPROP_PRICE1, Low[index]);
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_TIME2, Time[index]);
-            rectangles[currentRect].secondAnchorIndexPoint = index;
-            ObjectSet(rectangles[currentRect].objectName, OBJPROP_COLOR, clrRed);
         }
     }
 
-    rectangles[currentRect].lastHighPrice = High[index];
-    rectangles[currentRect].lastHighIndex = index;
-    rectangles[currentRect].lastLowPrice = Low[index];
-    rectangles[currentRect].lastLowIndex = index;
+    if(!(isCurrentLowLessThanRectLowest && isCurrentHighGreaterThanRectHighest)) {
+        rectangles[currentRect].lastHighPrice = High[index];
+        rectangles[currentRect].lastHighIndex = index;
+        rectangles[currentRect].lastLowPrice = Low[index];
+        rectangles[currentRect].lastLowIndex = index;
+    }
     
     // ObjectCreate("Rectangle", OBJ_RECTANGLE, 0, Time[lastFirstAnchorPoint], High[lastHighestIndex], Time[lastSecondAnchorPoint], Low[lastLowestIndex]);
 }
