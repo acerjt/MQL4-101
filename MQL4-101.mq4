@@ -161,8 +161,7 @@ int OnInit() {
     ChartConfig();
     //LoadTemplate();
     CreateButtonForDrawZone();
-    int bars = Bars(symbol, period) - 1;
-    bars = 500;
+    int bars = Bars(symbol, period) - 2;
     lastHighestIndex = lastLowestIndex = numOfBarsToCalculate = lastFirstAnchorPoint = lastSecondAnchorPoint = bars;
     createRectangle();
 
@@ -391,11 +390,11 @@ void calculate(int index) {
         isCurrentLowGreaterThanRectLowest = true;
     }
 
-    if(low <= rectangles[currentRect].lowestPrice) {
+    if(low < rectangles[currentRect].lowestPrice) {
         isCurrentLowLessThanRectLowest = true;
     }
 
-    if(high >= rectangles[currentRect].highestPrice) {
+    if(high > rectangles[currentRect].highestPrice) {
         isCurrentHighGreaterThanRectHighest = true;
     }
 
@@ -408,11 +407,11 @@ void calculate(int index) {
         isCurrentLowGreaterThanRectLastLow = true;
     }
 
-    if(low <= rectangles[currentRect].lastLowPrice) {
+    if(low < rectangles[currentRect].lastLowPrice) {
         isCurrentLowLessThanRectLastLow = true;
     }
 
-    if(high >= rectangles[currentRect].lastHighPrice) {
+    if(high > rectangles[currentRect].lastHighPrice) {
         isCurrentHighGreaterThanRectLastHigh = true;
     }
 
